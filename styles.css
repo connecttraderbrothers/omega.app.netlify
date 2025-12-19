@@ -11,6 +11,31 @@ body {
     min-height: 100vh;
 }
 
+.back-navigation {
+    max-width: 1200px;
+    margin: 0 auto 20px;
+}
+
+.back-btn {
+    background: #1a1a1a;
+    color: #fbbf24;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.back-btn:hover {
+    background: #2d2d2d;
+    transform: translateX(-4px);
+}
+
 .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -381,6 +406,10 @@ tr:hover {
 }
 
 @media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
     .container {
         padding: 20px;
     }
@@ -401,5 +430,10 @@ tr:hover {
     .header {
         flex-direction: column;
         text-align: center;
+    }
+
+    .back-btn {
+        width: 100%;
+        justify-content: center;
     }
 }
