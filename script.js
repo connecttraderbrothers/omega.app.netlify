@@ -1,6 +1,7 @@
 var items = [];
 var currentRateType = 'job';
 var estimateNumber = 1;
+var editingIndex = -1;
 
 // Edinburgh 2025 standard trade rates
 var tradeRates = {
@@ -178,7 +179,10 @@ function addItem() {
     });
 
     updateQuoteTable();
-    
+    clearForm();
+}
+
+function clearForm() {
     document.getElementById('description').value = '';
     document.getElementById('quantity').value = '1';
     document.getElementById('unitPrice').value = '';
@@ -187,8 +191,142 @@ function addItem() {
     document.getElementById('tradeRateInfo').textContent = '';
 }
 
+function editItem(index) {
+    // Cancel any existing edit
+    if (editingIndex >= 0) {
+        cancelEdit();
+    }
+    
+    editingIndex = index;
+    var item = items[index];
+    
+    // Build select options for category
+    var categoryOptions = '';
+    var categories = Object.keys(tradeRates);
+    categories.unshift('General');
+    for (var i = 0; i < categories.length; i++) {
+        var selected = categories[i] === item.category ? 'selected' : '';
+        categoryOptions += '<option value="' + categories[i] + '" ' + selected + '>' + categories[i] + '</option>';
+    }
+    
+    var row = document.getElementById('quoteItems').rows[index];
+    row.classList.add('editing-row');
+    row.innerHTML = `
+        <td>
+            <select class="inline-edit-input" id="edit-category-${index}" style="width: 100%;">
+                ${categoryOptions}
+            </select>
+        </td>
+        <td>
+            <input type="text" class="inline-edit-input" id="edit-description-${index}" value="${item.description}" style="width: 100%;">
+        </td>
+        <td class="text-center">
+            <input type="number" class="inline-edit-input" id="edit-quantity-${index}" value="${item.quantity}" step="0.1" min="0.1" style="width: 80px;">
+        </td>
+        <td class="text-right">
+            <input type="number" class="inline-edit-input" id="edit-price-${index}" value="${item.unitPrice}" step="0.01" min="0" style="width: 100px;">
+        </td>
+        <td class="text-right" style="font-weight: 600;">£${item.lineTotal.toFixed(2)}</td>
+        <td class="text-center">
+            <div style="display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;">
+                <button class="btn-action btn-save" onclick="saveEdit(${index})" title="Save">Save</button>
+                <button class="btn-action btn-cancel" onclick="cancelEdit()" title="Cancel">Cancel</button>
+            </div>
+        </td>
+    `;
+    
+    // Auto-update total when quantity or price changes
+    document.getElementById('edit-quantity-' + index).addEventListener('input', function() {
+        updateEditTotal(index);
+    });
+    document.getElementById('edit-price-' + index).addEventListener('input', function() {
+        updateEditTotal(index);
+    });
+}
+
+function updateEditTotal(index) {
+    var quantity = parseFloat(document.getElementById('edit-quantity-' + index).value) || 0;
+    var price = parseFloat(document.getElementById('edit-price-' + index).value) || 0;
+    var total = quantity * price;
+    
+    var row = document.getElementById('quoteItems').rows[index];
+    row.cells[4].textContent = '£' + total.toFixed(2);
+}
+
+function saveEdit(index) {
+    var category = document.getElementById('edit-category-' + index).value;
+    var description = document.getElementById('edit-description-' + index).value;
+    var quantity = parseFloat(document.getElementById('edit-quantity-' + index).value);
+    var unitPrice = parseFloat(document.getElementById('edit-price-' + index).value);
+    
+    if (!description || !unitPrice || !quantity) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    var lineTotal = unitPrice * quantity;
+    
+    items[index] = {
+        category: category,
+        description: description,
+        quantity: quantity,
+        unit: items[index].unit,
+        unitPrice: unitPrice,
+        lineTotal: lineTotal
+    };
+    
+    editingIndex = -1;
+    updateQuoteTable();
+}
+
+function cancelEdit() {
+    editingIndex = -1;
+    updateQuoteTable();
+}
+
 function removeItem(index) {
-    items.splice(index, 1);
+    if (confirm('Are you sure you want to delete this item?')) {
+        items.splice(index, 1);
+        editingIndex = -1;
+        updateQuoteTable();
+    }
+}
+
+function moveItem(index, direction) {
+    if (editingIndex >= 0) {
+        alert('Please save or cancel your current edit first');
+        return;
+    }
+    
+    if (direction === 'up' && index > 0) {
+        var temp = items[index];
+        items[index] = items[index - 1];
+        items[index - 1] = temp;
+    } else if (direction === 'down' && index < items.length - 1) {
+        var temp = items[index];
+        items[index] = items[index + 1];
+        items[index + 1] = temp;
+    }
+    updateQuoteTable();
+}
+
+function repositionItem(index) {
+    if (editingIndex >= 0) {
+        alert('Please save or cancel your current edit first');
+        return;
+    }
+    
+    var newPosition = prompt('Enter new position (1 to ' + items.length + '):', (index + 1));
+    if (newPosition === null) return;
+    
+    newPosition = parseInt(newPosition);
+    if (isNaN(newPosition) || newPosition < 1 || newPosition > items.length) {
+        alert('Invalid position. Please enter a number between 1 and ' + items.length);
+        return;
+    }
+    
+    var item = items.splice(index, 1)[0];
+    items.splice(newPosition - 1, 0, item);
     updateQuoteTable();
 }
 
@@ -215,7 +353,15 @@ function updateQuoteTable() {
         html += '<td class="text-center">' + item.quantity + '</td>';
         html += '<td class="text-right">£' + item.unitPrice.toFixed(2) + '</td>';
         html += '<td class="text-right" style="font-weight: 600;">£' + item.lineTotal.toFixed(2) + '</td>';
-        html += '<td class="text-center"><button class="btn-delete" onclick="removeItem(' + i + ')">Delete</button></td>';
+        html += '<td class="text-center">';
+        html += '<div style="display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;">';
+        html += '<button class="btn-action btn-edit" onclick="editItem(' + i + ')" title="Edit">Edit</button>';
+        html += '<button class="btn-action btn-move" onclick="moveItem(' + i + ', \'up\')" title="Move Up" ' + (i === 0 ? 'disabled' : '') + '>↑</button>';
+        html += '<button class="btn-action btn-move" onclick="moveItem(' + i + ', \'down\')" title="Move Down" ' + (i === items.length - 1 ? 'disabled' : '') + '>↓</button>';
+        html += '<button class="btn-action btn-reposition" onclick="repositionItem(' + i + ')" title="Move to Position">#</button>';
+        html += '<button class="btn-action btn-delete" onclick="removeItem(' + i + ')" title="Delete">Del</button>';
+        html += '</div>';
+        html += '</td>';
         html += '</tr>';
     }
 
@@ -247,6 +393,11 @@ function updateQuoteTable() {
 }
 
 function previewQuote() {
+    if (editingIndex >= 0) {
+        alert('Please save or cancel your current edit first');
+        return;
+    }
+    
     var clientName = document.getElementById('clientName').value || '[Client Name]';
     var clientPhone = document.getElementById('clientPhone').value;
     var projectAddress = document.getElementById('projectAddress').value || '[Project Address]';
@@ -276,16 +427,13 @@ function previewQuote() {
       .company-details-preview { font-size: 11px; line-height: 1.6; color: #666; }
       .logo-preview { width: 120px; height: auto; }
       .estimate-banner-preview { background: linear-gradient(135deg, #bc9c22, #d4af37); padding: 15px 20px; margin-bottom: 25px; display: inline-block; font-weight: bold; font-size: 16px; color: white; }
-      .info-section-preview { display: flex; justify-content: space-between; margin-bottom: 30px; }
-      .client-info-preview { flex: 1; }
-      .client-info-preview h3 { font-size: 12px; color: #666; margin-bottom: 8px; }
-      .client-info-preview p { font-size: 13px; line-height: 1.5; color: #333; }
-      .estimate-details-preview { flex: 0 0 250px; }
-      .details-table-preview { width: 100%; border-collapse: collapse; }
-      .details-table-preview td { padding: 8px 10px; font-size: 13px; }
-      .detail-label-preview { color: #666; text-align: left; width: 120px; }
-      .detail-value-preview { font-weight: bold; color: #333; text-align: left; }
-      .expiry-date-preview { background: linear-gradient(135deg, #bc9c22, #d4af37); padding: 5px 10px; display: inline-block; color: white; font-weight: bold; }
+      .info-section-preview { display: flex; justify-content: space-between; margin-bottom: 30px; align-items: flex-start; gap: 100px; }
+      .client-info-preview { flex: 0 0 auto; }
+      .estimate-details-preview { flex: 0 0 auto; }
+      .info-row-preview { font-size: 13px; line-height: 2; display: flex; align-items: center; }
+      .info-label-preview { color: #333; font-weight: bold; margin-right: 10px; min-width: 80px; }
+      .info-value-preview { color: #333; font-weight: normal; }
+      .expiry-date-preview { background: linear-gradient(135deg, #bc9c22, #d4af37); padding: 5px 10px; display: inline-block; color: white; font-weight: normal; }
       .items-table-preview { width: 100%; border-collapse: collapse; margin: 30px 0; }
       .items-table-preview thead { background: #f5f5f5; }
       .items-table-preview th { padding: 12px; text-align: left; font-size: 12px; font-weight: bold; color: #333; border-bottom: 2px solid #ddd; }
@@ -324,31 +472,41 @@ function previewQuote() {
 
       <div class="info-section-preview">
         <div class="client-info-preview">
-          <h3>${clientName}</h3>
-          <p>
-            ${projectAddress}${clientPhone ? '<br>' + clientPhone : ''}
-          </p>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Name:</span>
+            <span class="info-value-preview">${clientName}</span>
+          </div>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Address:</span>
+            <span class="info-value-preview">${projectAddress}</span>
+          </div>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Postcode:</span>
+            <span class="info-value-preview">${document.getElementById('projectPostcode').value || 'N/A'}</span>
+          </div>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Phone:</span>
+            <span class="info-value-preview">${clientPhone || 'N/A'}</span>
+          </div>
         </div>
 
         <div class="estimate-details-preview">
-          <table class="details-table-preview">
-            <tr>
-              <td class="detail-label-preview">Date:</td>
-              <td class="detail-value-preview">${quoteDate}</td>
-            </tr>
-            <tr>
-              <td class="detail-label-preview">Estimate #:</td>
-              <td class="detail-value-preview">${estNumber}</td>
-            </tr>
-            <tr>
-              <td class="detail-label-preview">Customer Ref:</td>
-              <td class="detail-value-preview">${customerId}</td>
-            </tr>
-            <tr>
-              <td class="detail-label-preview">Expiry Date:</td>
-              <td><span class="expiry-date-preview">${expiryDate}</span></td>
-            </tr>
-          </table>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Date:</span>
+            <span class="info-value-preview">${quoteDate}</span>
+          </div>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Estimate #:</span>
+            <span class="info-value-preview">${estNumber}</span>
+          </div>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Customer ID:</span>
+            <span class="info-value-preview">${customerId}</span>
+          </div>
+          <div class="info-row-preview">
+            <span class="info-label-preview">Expiry Date:</span>
+            <span class="expiry-date-preview">${expiryDate}</span>
+          </div>
         </div>
       </div>
 
@@ -407,7 +565,7 @@ function previewQuote() {
 
       <div class="footer-note-preview">
         If you have any questions about this estimate, please contact<br>
-        Trader Brothers on 07448835577
+        us at traderbrotherslimited@gmail.com, or 07931 810557
         <div class="thank-you-preview">Thank you for your business</div>
       </div>
     </div>`;
